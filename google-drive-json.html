@@ -1,0 +1,305 @@
+<!--
+@license
+Copyright (c) 2015 The Polymer Project Authors. All rights reserved.
+This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
+The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
+The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
+Code distributed by Google as part of the polymer project is also
+subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
+-->
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../iron-ajax/iron-ajax.html">
+
+<!--
+An element that facilitates manipulating json data in google drive, allowing google drive to act as a backend.
+
+Example:
+
+    <google-drive-json folder="foldername" filename="filename" json="{{data}}" access-token="[[accessToken]]"></google-drive-json>
+
+@group Seed Elements
+@element google-drive-json
+@demo demo/index.html
+@hero hero.svg
+-->
+<dom-module id="google-drive-json">
+
+  <template>
+    
+    <style>
+      
+      :host {
+        display: block;
+        box-sizing: border-box;
+      }
+  
+    </style>
+
+    <iron-ajax
+      id="ajax"
+      url=""
+      headers=""
+      handle-as="json"
+      on-response="_retrievedFile"
+      debounce-duration="300">
+    </iron-ajax>
+
+  </template>
+
+</dom-module>
+
+<script>
+
+  Polymer({
+
+    is: 'google-drive-json',
+
+    properties: {
+
+      /**
+       * The filename
+       */ 
+      filename: {
+
+        type: String,
+        value: '',
+        notify: false,
+        reflectToAttribute: false
+
+      },
+
+      /**
+       * Parent folder
+       * @type {Object}
+       */
+      folder: {
+
+        type: String,
+        value: '',
+        notify: false,
+        reflectToAttribute: false
+
+      },
+
+      /**
+       * Json data contained in file
+       * @type {Object}
+       */
+      json: {
+
+        type: Object,
+        value: null,
+        notify: true,
+        reflectToAttribute: true
+
+      },
+
+      /**
+       * Access token obtained from signing in through google
+       * @type {Object}
+       */
+      accessToken: {
+
+        type: String,
+        value: '',
+        notify: false,
+        reflectToAttribute: false
+
+      }
+
+      /**
+       * Reference to the found file object (not downloaded)
+       * @type {Object}
+       */
+      _fileRef: {
+
+        type: Object,
+        value: null,
+        notify: false,
+        reflectToAttribute: false
+
+      }
+
+    },
+
+    // Element Lifecycle
+
+    ready: function() {
+      // `ready` is called after all elements have been configured, but
+      // propagates bottom-up. This element's children are ready, but parents
+      // are not.
+      //
+      // This is the point where you should make modifications to the DOM (when
+      // necessary), or kick off any processes the element wants to perform.
+    },
+
+    attached: function() {
+      // `attached` fires once the element and its parents have been inserted
+      // into a document.
+      //
+      // This is a good place to perform any work related to your element's
+      // visual state or active behavior (measuring sizes, beginning animations,
+      // loading resources, etc).
+    },
+
+    detached: function() {
+      // The analog to `attached`, `detached` fires when the element has been
+      // removed from a document.
+      //
+      // Use this to clean up anything you did in `attached`.
+    },
+
+    // Element Behavior
+
+    /**
+     * Load the file
+     */
+    loadFile: function () {
+
+      var that = this;
+
+      gapi.client.load( 'drive', 'v2', function () {
+
+        //Get the users files
+        gapi.client.drive.files.list({
+          
+          'fileId': that.filename,
+          'parents': [{ 'id': that.folder }]
+        
+        }).execute(function( resp ) {
+
+          if ( resp.error ) {
+
+            that.fire( 'error', resp.error );
+
+          } else {
+
+            that._fileRef = that._getFile( resp.items ).bind( that );
+
+            if ( that._fileRef !== null ) {
+
+              app.$.ajax.url = that._fileRef.downloadUrl;
+              app.$.ajax.headers = { Authorization: 'Bearer ' + that.accessToken };
+              app.$.ajax.generateRequest();
+
+            } else {
+
+              that.fire( 'error', 'There was an error locating the file' );
+
+            }
+
+          }
+
+        });  
+
+      });  
+
+    },
+
+    /**
+     * Create the file
+     * @param  {[type]} data [description]
+     * @return {[type]}      [description]
+     */
+    createFile: function ( data ) {
+
+      this._fileHandler( data, 'POST' );
+
+    },
+
+    /**
+     * Update the file
+     * @param  {[type]} data [description]
+     * @return {[type]}      [description]
+     */
+    updateFile: function ( data ) {
+
+      this._fileHandler( data, 'PUT' );
+
+    }
+
+    /**
+     * Handles updating/creating files
+     * @return {[type]} [description]
+     */
+    _fileHandler: function ( data, action ) {
+
+      var that = this;
+      var boundary = '-------314159265358979323846';
+      var delimiter = "\r\n--" + boundary + "\r\n";
+      var close_delim = "\r\n--" + boundary + "--";
+      var contentType = 'application/json';
+      var base64Data = btoa( JSON.stringify( data ) );
+      var metadata = {
+        'title': that.filename,
+        'mimeType': contentType,
+        'parents': [{ 'id': that.folder }]
+      };
+
+      var multipartRequestBody =
+          delimiter +
+          'Content-Type: application/json\r\n\r\n' +
+          JSON.stringify( metadata ) +
+          delimiter +
+          'Content-Type: ' + contentType + '\r\n' +
+          'Content-Transfer-Encoding: base64\r\n' +
+          '\r\n' +
+          base64Data +
+          close_delim;
+      var request = gapi.client.request({
+          'path': '/upload/drive/v2/files',
+          'method': action,
+          'params': {'uploadType': 'multipart'},
+          'headers': {
+            'Content-Type': 'multipart/mixed; boundary="' + boundary + '"'
+          },
+          'body': multipartRequestBody});
+
+      request.execute( function () {
+
+        that.fire( 'updated-file' );
+
+      });
+
+    },
+
+    /**
+     * Gets a specific file
+     * @param  {[type]} items [description]
+     * @return {[type]}       [description]
+     */
+    _getFile: function ( items ) {
+
+      for ( var i = 0; i < items.length; ++i ) {
+
+        if ( items[i].title === this.filename ) {
+
+          return items[i];
+
+        }
+
+      }
+
+      return null;
+
+    },
+
+    /**
+     * File downloaded to app
+     * @param  {[type]} e [description]
+     * @return {[type]}   [description]
+     */
+    _retrievedFile: function ( e ) {
+
+      e.stopPropagation();
+      e.preventDefault();
+
+      this.set( 'json', e.detail.response );
+
+      this.fire( 'json-updated' );
+
+    }
+
+  });
+
+</script>
