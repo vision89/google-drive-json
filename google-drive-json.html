@@ -337,9 +337,9 @@ Example:
      * @param  {[type]} foldername [description]
      * @return {[type]}      [description]
      */
-    updateFile: function ( data, filename, foldername ) {
+    updateFile: function ( data, filename, foldername, fileId ) {
 
-      return this._fileHandler( data, 'PUT', filename, foldername );
+      return this._fileHandler( data, 'PUT', filename, foldername, fileId );
 
     },
 
@@ -351,7 +351,7 @@ Example:
      * @param  {[type]} foldername [description]
      * @return {[type]} [description]
      */
-    _fileHandler: function ( data, action, filename, foldername ) {
+    _fileHandler: function ( data, action, filename, foldername, fileId ) {
 
       var that = this;
       
@@ -380,19 +380,36 @@ Example:
             '\r\n' +
             base64Data +
             close_delim;
-              
-          var request = gapi.client.request({
+            
+          var request = null;
+          
+          if ( fileId === undefined ) {
+            
+            request = gapi.client.request({
             'path': '/upload/drive/v2/files',
             'method': action,
-            'params': {'uploadType': 'multipart'},
+            'params': {'uploadType': 'multipart' 'alt': 'json'},
             'headers': {
               'Content-Type': 'multipart/mixed; boundary="' + boundary + '"'
             },
             'body': multipartRequestBody});
+            
+          } else {
+            
+            request = gapi.client.request({
+            'path': '/upload/drive/v2/files/' + fileId,
+            'method': action,
+            'params': {'uploadType': 'multipart' 'alt': 'json'},
+            'headers': {
+              'Content-Type': 'multipart/mixed; boundary="' + boundary + '"'
+            },
+            'body': multipartRequestBody});
+            
+          }
     
           request.execute( function ( resp ) {
             
-            if ( resp.err ) {
+            if ( resp.error ) {
               
               reject ( resp.error );
               
