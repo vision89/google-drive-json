@@ -13,34 +13,323 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
     <title>google-drive-json Demo</title>
+    
     <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
     <link rel="import" href="../google-drive-json.html">
+    <link rel="import" href="../../google-signin/google-signin.html">
+    <link rel="import" href="../../google-signin/google-signin-aware.html">
+
   </head>
   <body unresolved>
 
     <p>An example of <code>&lt;google-drive-json&gt;</code>:</p>
 
-    <p>Make words! <button id="saybtn">Say Something</button></p>
-    <p>Make lasers! <button id="laserbtn">Fire lasers</button></p>
+    <template is="dom-bind" id="app">
 
-    <google-drive-json author='{"name": "Lord Meowser", "image": "http://placekitten.com/g/200/300"}' fancy>
-      <h2>Hello google-drive-json</h2>
-    </google-drive-json>
+      <google-signin raised theme="light"
+        client-id="1058615595990-igvf3got3ugviq3eqdnh0pi7dkj1dr3v.apps.googleusercontent.com"
+        scopes="https://www.googleapis.com/auth/drive" >
+      </google-signin>
+      <google-signin-aware
+        scopes="https://www.googleapis.com/auth/drive"
+        on-google-signin-aware-success="signedIn"
+        on-google-signin-aware-signed-out="signedOut">
+      </google-signin-aware>
+
+      <google-drive-json id="gjson" json="{{data}}" access-token="[[accessToken]]" 
+        file-ref="{{fileRef}}"  on-error="errorHandler" on-file-retrieved="jsonHandler"
+        folder-id="{{folderId}}">
+      </google-drive-json>
+
+      <p>
+
+        Folder: <input type="text" id="foldername"></input>
+
+      </p>
+      
+      <p>
+
+        Filename: <input type="text" id="filename"></input>
+
+      </p>
+
+      <p>
+
+        Data: <input id="input_data" type="text"></input>
+
+      </p>  
+
+      <p>
+
+        <button id="upsert" onclick="upsert()">Upsert</button>
+
+      </p>
+      
+      <p>
+        
+        <button id="checkFolder" onclick="checkFolder()">Check Folder</button> <- Hit this to get folder id before inserting a file
+        
+      </p>
+      
+      <p>
+        
+        <button id="createFolder" onclick="createFolder()">Create Folder</button>
+        
+      </p>
+      
+      <p>
+        
+        <button id="deleteFile" onclick="deleteFile()">Delete File</button>
+        
+      </p>
+      
+      <p>
+        
+        <button id="deleteFolder" onclick="deleteFolder()">Delete Folder</button>
+        
+      </p>
+      
+      <p>
+        
+        <button id="loadFile" onclick="loadFile()">Load File</button>
+        
+      </p>
+
+    </template>  
 
     <script>
-      var seedElement = document.querySelector('google-drive-json');
-      
-      document.querySelector('#saybtn').addEventListener('click', function() {
-        alert(seedElement.sayHello('Hallo!'));
-      });
-      
-      document.querySelector('#laserbtn').addEventListener('click', function() {
-        seedElement.fireLasers();
-      });
-      
-      document.addEventListener("google-drive-json-lasers", function(e) {
-        console.log(e.detail.sound);
-      });
+
+      ( function () {
+
+        var app = document.querySelector( '#app' );
+        var filename = '';
+        var foldername = '';
+        var data = {};
+
+        // See https://github.com/Polymer/polymer/issues/1381
+        window.addEventListener('WebComponentsReady', function() {
+
+          /**
+           * Sign in
+           * @param  {[type]} e [description]
+           * @return {[type]}   [description]
+           */
+          app.signedIn = function ( e ) {
+
+            e.stopPropagation();
+            e.preventDefault();
+            
+            app.accessToken = e.detail.access_token;
+
+            //Get the users email address
+            app.email = gapi.auth2.getAuthInstance().currentUser.get().getBasicProfile().getEmail();
+            
+            console.log( 'email: ', app.email );
+            
+          };
+
+          /**
+           * Sign out
+           * @param  {[type]} e [description]
+           * @return {[type]}   [description]
+           */
+          app.signedOut = function (e) {
+            
+            app.accessToken = undefined;
+            app.email = '';
+          
+          };
+
+          /**
+           * An error was sent
+           * @param  {[type]} e [description]
+           * @return {[type]}   [description]
+           */
+          app.errorHandler = function ( e ) {
+
+            e.stopPropagation();
+            e.preventDefault();
+
+            alert( 'There was an error, see the console' );
+            console.log( 'Error: ', e );
+
+          };
+
+          /**
+           * The file was updated/created
+           * @param  {[type]} e [description]
+           * @return {[type]}   [description]
+           */
+          app.fileHandler = function ( e ) {
+            
+            filename = app.$.filename.value;
+            foldername = app.folderId || app.$.foldername.value;
+
+            app.$.gjson.loadFile( filename, foldername );
+            
+            app.$.input_data.value = '';
+            app.$.filename.value = '';
+            app.$.foldername.value = '';
+
+          };
+
+          /**
+           * Json was retrieved
+           * @param  {[type]} e [description]
+           * @return {[type]}   [description]
+           */
+          app.jsonHandler = function ( e ) {
+
+            e.stopPropagation();
+            e.preventDefault();
+            
+            alert( 'json updated' );
+            console.log( 'Json-Updated:', app.json );
+
+          };
+          
+          window.loadFile = function () {
+            
+            filename = app.$.filename.value;
+            foldername = app.folderId || app.$.foldername.value;
+            
+            app.$.gjson.loadFile( filename, foldername );
+            
+          };
+          
+          /**
+           * Check if folder exists
+           */ 
+          window.checkFolder = function () {
+            
+            foldername = app.$.foldername.value;
+            
+            app.$.gjson.getFolderId( foldername ).then ( function ( res ) {
+              
+              if ( res ) {
+                
+                alert ( 'Folder exists: ' + app.folderId );
+                
+              } else {
+                
+                alert ( 'Folder doesnt exist' );
+                
+              }
+              
+            }, function ( err ) {
+              
+              alert( 'Error: See console' );
+              
+              console.log ( err );
+              
+            });
+            
+          };
+          
+          /**
+           * Create the folder
+           */ 
+          window.createFolder = function () {
+            
+            foldername = app.$.foldername.value;
+            
+            app.$.gjson.createFolder ( foldername ).then ( function ( id ) {
+              
+              alert ( 'Folder created: ' + id );
+              
+            }, function ( err ) {
+              
+              alert ( 'Error: See console' );
+              
+              console.log ( err );
+              
+            });
+            
+          };
+          
+          window.deleteFile = function () {
+            
+            filename = app.$.filename.value;
+            
+            app.$.gjson.delete( filename ).then( function () {
+              
+              alert ( 'File deleted' );
+              
+            }, function ( err ) {
+              
+              alert ( 'Error: See console' );
+              
+              console.log ( err );
+              
+            });
+            
+          };
+          
+          window.deleteFolder = function () {
+            
+            foldername = app.$.foldername.value;
+            
+            app.$.gjson.delete( foldername ).then( function () {
+              
+              alert ( 'Folder deleted' );
+              
+            }, function ( err ) {
+              
+              alert ( 'Error: See console' );
+              
+              console.log ( err );
+              
+            });
+            
+          };
+
+          /**
+           * File is being created/updated
+           * @return {[type]} [description]
+           */
+          window.upsert = function () {
+            
+            data.value = app.$.input_data.value;
+            filename = app.$.filename.value;
+            foldername = app.folderId || app.$.foldername.value;
+            
+            console.log( 'Data: ', data );
+            console.log( 'Filename: ', filename );
+            console.log( 'Foldername: ',  foldername );
+            console.log( 'fileRef:', app.fileRef );
+
+            if ( app.fileRef === null ) {
+
+              app.$.gjson.createFile( data, filename, foldername ).then( function () {
+                
+                app.fileHandler();
+                
+              }, function ( err ) {
+                
+                alert( 'There was an error creating the file' );
+                console.log( err );
+                
+              });
+
+            } else {
+
+              app.$.gjson.updateFile( data, filename, foldername ).then( function () {
+                
+                app.fileHandler();
+                
+              }, function ( err ) {
+                
+                alert( 'There was an error updating the file' );
+                
+              })
+
+            }
+
+          };
+
+        });
+
+      })();
       
     </script>
 

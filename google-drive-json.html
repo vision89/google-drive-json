@@ -7,6 +7,8 @@ The complete set of contributors may be found at http://polymer.github.io/CONTRI
 Code distributed by Google as part of the polymer project is also
 subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
 -->
+
+<script src="https://apis.google.com/js/client.js"></script>
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../iron-ajax/iron-ajax.html">
 
@@ -57,31 +59,6 @@ Example:
     properties: {
 
       /**
-       * The filename
-       */ 
-      filename: {
-
-        type: String,
-        value: '',
-        notify: false,
-        reflectToAttribute: false
-
-      },
-
-      /**
-       * Parent folder
-       * @type {Object}
-       */
-      folder: {
-
-        type: String,
-        value: '',
-        notify: false,
-        reflectToAttribute: false
-
-      },
-
-      /**
        * Json data contained in file
        * @type {Object}
        */
@@ -105,19 +82,36 @@ Example:
         notify: false,
         reflectToAttribute: false
 
-      }
+      },
 
       /**
        * Reference to the found file object (not downloaded)
+       * I do not advise changing this outside of this element
+       * It is meant for viewing only
        * @type {Object}
        */
-      _fileRef: {
+      fileRef: {
 
         type: Object,
         value: null,
-        notify: false,
-        reflectToAttribute: false
+        notify: true,
+        reflectToAttribute: true
 
+      },
+      
+      /**
+       * Reference to the found folder id only
+       * I do not advise changing this outside of this element
+       * It is meant for viewing only
+       * @type {String}
+       */ 
+      folderId: {
+        
+        type: String,
+        value: '',
+        notify: true,
+        reflectToAttribute:true
+        
       }
 
     },
@@ -140,6 +134,7 @@ Example:
       // This is a good place to perform any work related to your element's
       // visual state or active behavior (measuring sizes, beginning animations,
       // loading resources, etc).
+      
     },
 
     detached: function() {
@@ -148,13 +143,59 @@ Example:
       //
       // Use this to clean up anything you did in `attached`.
     },
+    
+    getFolderId: function ( foldername ) {
+      
+      var that = this;
+      
+      return new Promise( function ( resolve, reject ) {
+        
+        try {
+          
+          gapi.client.load( 'drive', 'v2', function () {
+
+            //Get the users files
+            gapi.client.drive.files.list({
+              
+              'fileId': foldername,
+              'q': "title = '" + foldername + "' and trashed = false and mimeType = 'application/vnd.google-apps.folder'"
+            
+            }).execute(function( resp ) {
+    
+              if ( resp.error ) {
+    
+                reject( resp.error );
+    
+              } else {
+                
+                var folder = that._getFile( resp.items, foldername );
+                
+                resolve( app.folderId = folder.id );
+    
+              }
+    
+            });  
+    
+          });
+          
+        } catch ( err ) {
+          
+          reject ( err );
+          
+        }
+        
+      });
+      
+    },
 
     // Element Behavior
 
     /**
      * Load the file
+     * @param  {[type]} filename [description]
+     * @param  {[type]} foldername [description]
      */
-    loadFile: function () {
+    loadFile: function ( filename, foldername ) {
 
       var that = this;
 
@@ -163,8 +204,9 @@ Example:
         //Get the users files
         gapi.client.drive.files.list({
           
-          'fileId': that.filename,
-          'parents': [{ 'id': that.folder }]
+          'fileId': filename,
+          'parents': [{ 'id': foldername }],
+          'q': "title = '" + filename + "' and trashed = false and '" + foldername + "' in parents and mimeType = 'application/json'"
         
         }).execute(function( resp ) {
 
@@ -174,13 +216,13 @@ Example:
 
           } else {
 
-            that._fileRef = that._getFile( resp.items ).bind( that );
+            that.fileRef = that._getFile( resp.items, filename );
 
-            if ( that._fileRef !== null ) {
+            if ( that.fileRef !== null ) {
 
-              app.$.ajax.url = that._fileRef.downloadUrl;
-              app.$.ajax.headers = { Authorization: 'Bearer ' + that.accessToken };
-              app.$.ajax.generateRequest();
+              that.$.ajax.url = that.fileRef.downloadUrl;
+              that.$.ajax.headers = { Authorization: 'Bearer ' + that.accessToken };
+              that.$.ajax.generateRequest();
 
             } else {
 
@@ -195,70 +237,179 @@ Example:
       });  
 
     },
+    
+    /**
+     * @param  {[type]} foldername [description]
+     * @return {[type]}      [description]
+     */ 
+    createFolder: function ( foldername ) {
+      
+      var that = this;
+      
+      return new Promise ( function ( resolve, reject ) {
+        
+        try {
+          
+          var body = {
+            'title': foldername,
+            'mimeType': "application/vnd.google-apps.folder"
+          };
+        
+          var request = gapi.client.drive.files.insert({
+            
+            'resource': body
+            
+          }).execute( function( resp ) {
+            
+            if ( resp.error ) {
+            
+              reject ( resp.error );
+              
+            } else {
+              
+              resolve ( resp.id );
+              
+            } 
+            
+          });
+          
+        } catch ( err ) {
+          
+          reject ( err );
+          
+        }
+        
+      });
+      
+    },
+    
+    delete: function ( name ) {
+      
+      return new Promise ( function ( resolve, reject ) {
+        
+        try {
+          
+          gapi.client.drive.files.delete({
+          
+            'fileId': name
+            
+          }).execute( function( resp ) {
+            
+            if ( resp.error ) {
+            
+              reject ( resp.error );
+              
+            } else {
+              
+              resolve ( true );
+              
+            } 
+            
+          });
+          
+        } catch ( err ) {
+          
+          reject ( err );
+          
+        }
+        
+      });
+      
+    },
 
     /**
      * Create the file
      * @param  {[type]} data [description]
+     * @param  {[type]} filename [description]
+     * @param  {[type]} foldername [description]
      * @return {[type]}      [description]
      */
-    createFile: function ( data ) {
+    createFile: function ( data, filename, foldername ) {
 
-      this._fileHandler( data, 'POST' );
+      return this._fileHandler( data, 'POST', filename, foldername );
 
     },
 
     /**
      * Update the file
      * @param  {[type]} data [description]
+     * @param  {[type]} filename [description]
+     * @param  {[type]} foldername [description]
      * @return {[type]}      [description]
      */
-    updateFile: function ( data ) {
+    updateFile: function ( data, filename, foldername ) {
 
-      this._fileHandler( data, 'PUT' );
+      return this._fileHandler( data, 'PUT', filename, foldername );
 
-    }
+    },
 
     /**
      * Handles updating/creating files
+     * @param  {[type]} data [description]
+     * @param  {[type]} action [description]
+     * @param  {[type]} filename [description]
+     * @param  {[type]} foldername [description]
      * @return {[type]} [description]
      */
-    _fileHandler: function ( data, action ) {
+    _fileHandler: function ( data, action, filename, foldername ) {
 
       var that = this;
-      var boundary = '-------314159265358979323846';
-      var delimiter = "\r\n--" + boundary + "\r\n";
-      var close_delim = "\r\n--" + boundary + "--";
-      var contentType = 'application/json';
-      var base64Data = btoa( JSON.stringify( data ) );
-      var metadata = {
-        'title': that.filename,
-        'mimeType': contentType,
-        'parents': [{ 'id': that.folder }]
-      };
-
-      var multipartRequestBody =
-          delimiter +
-          'Content-Type: application/json\r\n\r\n' +
-          JSON.stringify( metadata ) +
-          delimiter +
-          'Content-Type: ' + contentType + '\r\n' +
-          'Content-Transfer-Encoding: base64\r\n' +
-          '\r\n' +
-          base64Data +
-          close_delim;
-      var request = gapi.client.request({
-          'path': '/upload/drive/v2/files',
-          'method': action,
-          'params': {'uploadType': 'multipart'},
-          'headers': {
-            'Content-Type': 'multipart/mixed; boundary="' + boundary + '"'
-          },
-          'body': multipartRequestBody});
-
-      request.execute( function () {
-
-        that.fire( 'updated-file' );
-
+      
+      return new Promise ( function ( resolve, reject ) {
+        
+        try {
+        
+          var boundary = '-------314159265358979323846';
+          var delimiter = "\r\n--" + boundary + "\r\n";
+          var close_delim = "\r\n--" + boundary + "--";
+          var contentType = 'application/json';
+          var base64Data = btoa( JSON.stringify( data ) );
+          var metadata = {
+            'title': filename,
+            'mimeType': contentType,
+            'parents': [{ 'id': foldername }]
+          };
+    
+          var multipartRequestBody =
+            delimiter +
+            'Content-Type: application/json\r\n\r\n' +
+            JSON.stringify( metadata ) +
+            delimiter +
+            'Content-Type: ' + contentType + '\r\n' +
+            'Content-Transfer-Encoding: base64\r\n' +
+            '\r\n' +
+            base64Data +
+            close_delim;
+              
+          var request = gapi.client.request({
+            'path': '/upload/drive/v2/files',
+            'method': action,
+            'params': {'uploadType': 'multipart'},
+            'headers': {
+              'Content-Type': 'multipart/mixed; boundary="' + boundary + '"'
+            },
+            'body': multipartRequestBody});
+    
+          request.execute( function ( resp ) {
+            
+            if ( resp.err ) {
+              
+              reject ( resp.error );
+              
+            } else {
+              
+              resolve( app.fileRef = resp );
+              
+            }
+    
+          });
+          
+        } catch ( err ) {
+          
+          reject ( err );
+          
+        }
+        
       });
 
     },
@@ -266,21 +417,25 @@ Example:
     /**
      * Gets a specific file
      * @param  {[type]} items [description]
+     * @param  {[type]} filename [description]
      * @return {[type]}       [description]
      */
-    _getFile: function ( items ) {
+    _getFile: function ( items, filename ) {
+
+      returnItem = null;
 
       for ( var i = 0; i < items.length; ++i ) {
 
-        if ( items[i].title === this.filename ) {
+        if ( items[i].title === filename ) {
 
-          return items[i];
+          returnItem = items[i];
+          break;
 
         }
 
       }
 
-      return null;
+      return returnItem;
 
     },
 
@@ -296,7 +451,7 @@ Example:
 
       this.set( 'json', e.detail.response );
 
-      this.fire( 'json-updated' );
+      this.fire( 'file-retrieved' );
 
     }
 
