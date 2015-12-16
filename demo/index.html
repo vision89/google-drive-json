@@ -267,7 +267,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
           
           window.deleteFolder = function () {
             
-            foldername = app.$.foldername.value;
+            foldername = app.folderId || app.$.foldername.value;
             
             app.$.gjson.delete( foldername ).then( function () {
               
