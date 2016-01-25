@@ -157,6 +157,7 @@ Example:
             //Get the users files
             gapi.client.drive.files.list({
               
+              'fileId': '',
               'q': "title = '" + foldername + "' and trashed = false and mimeType = 'application/vnd.google-apps.folder'"
             
             }).execute(function( resp ) {
