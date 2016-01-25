@@ -170,7 +170,15 @@ Example:
                 
                 var folder = that._getFile( resp.items, foldername );
                 
-                resolve( this.folderId = folder.id );
+                if ( folder === null ) {
+                  
+                  reject( 'File not found: ' + foldername );
+                  
+                } else {
+                 
+                  resolve( this.folderId = folder.id ); 
+                  
+                }
     
               }
     
