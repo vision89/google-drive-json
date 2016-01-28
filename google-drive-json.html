@@ -417,7 +417,11 @@ Example:
     
           request.execute( function ( resp ) {
             
-            if ( resp.error ) {
+            if ( resp === false ) {
+              
+              reject( 'Error inserting data' );
+              
+            } else if ( resp.error ) {
               
               reject ( resp.error );
               
